@@ -1,0 +1,10 @@
+---
+# oracle-jdk8, tomcat8
+
+- hosts: tomcat
+  remote_user: root
+
+  roles:
+    - oracle-jdk8
+    - tomcat8
+

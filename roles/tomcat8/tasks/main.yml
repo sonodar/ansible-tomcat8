@@ -1,0 +1,86 @@
+---
+
+- name: Download tomcat
+  get_url: url=http://archive.apache.org/dist/tomcat/tomcat-8/v{{tomcat_version}}/bin/apache-tomcat-{{tomcat_version}}.tar.gz
+           dest=/tmp/apache-tomcat-{{tomcat_version}}.tar.gz 
+
+- name: Extract tomcat
+  command: /bin/tar xzf /tmp/apache-tomcat-{{tomcat_version}}.tar.gz -C /opt/ creates=/opt/apache-tomcat-{{tomcat_version}}
+
+- name: Download tomcat extras libralies
+  get_url: url=http://archive.apache.org/dist/tomcat/tomcat-8/v{{tomcat_version}}/bin/extras/{{item.name}}
+           dest=/opt/apache-tomcat-{{tomcat_version}}/{{item.dir}}/ 
+  with_items:
+    - { name: catalina-jmx-remote.jar  , dir: lib }
+    - { name: tomcat-juli-adapters.jar , dir: lib }
+    - { name: tomcat-juli.jar          , dir: bin }
+
+- name: Remove docs apps
+  file: path=/opt/apache-tomcat-{{tomcat_version}}/webapps/docs state=absent
+
+- name: Remove examples apps
+  file: path=/opt/apache-tomcat-{{tomcat_version}}/webapps/examples state=absent
+
+- name: Remove logging.properties
+  file: path=/opt/apache-tomcat-{{tomcat_version}}/conf/logging.properties state=absent
+
+- name: Add logback libralies
+  copy: src=tomcat/lib dest=/opt/apache-tomcat-{{tomcat_version}}/
+
+- name: Add tomcat environment file
+  template: src=tomcat/bin/setenv.sh dest=/opt/apache-tomcat-{{tomcat_version}}/bin/setenv.sh mode=0755
+
+- name: Add tomcat configuration files - templates
+  template: src=tomcat/conf/{{item}} dest=/opt/apache-tomcat-{{tomcat_version}}/conf/{{item}}
+  with_items:
+    - server.xml
+    - tomcat-users.xml
+
+- name: Add tomcat configuration files
+  copy: src=tomcat/conf/{{item}} dest=/opt/apache-tomcat-{{tomcat_version}}/conf/{{item}}
+  with_items:
+    - logback.xml
+    - logback-access.xml
+
+- name: Remove home directory symlink
+  shell: rm -f /opt/tomcat removes=/opt/tomcat
+
+- name: Create home directory symlink (Temporary for useradd)
+  file: src=/opt/apache-tomcat-{{tomcat_version}} path=/opt/tomcat state=link
+
+- name: Create tomcat group
+  group: name=tomcat
+
+- name: Create tomcat user
+  user: name=tomcat group=tomcat home=/opt/tomcat
+
+- name: Remove home directory symlink (again)
+  shell: rm -f /opt/tomcat removes=/opt/tomcat
+
+- name: Change tomcat directory permissions
+  file: path=/opt/apache-tomcat-{{tomcat_version}} owner=tomcat group=tomcat state=directory recurse=yes
+
+- name: Recreate home directory symlink
+  file: src=/opt/apache-tomcat-{{tomcat_version}} owner=tomcat group=tomcat path=/opt/tomcat state=link
+
+- name: Add tomcat systemd unit file
+  copy: src=systemd/tomcat.service dest=/usr/lib/systemd/system/tomcat.service owner=root group=root
+
+- name: systemd daemon-reload
+  shell: systemctl daemon-reload
+
+- name: Start tomcat
+  service: name=tomcat state=restarted enabled=yes
+
+- name: Add firewalld service file
+  template: src=firewalld/tomcat.xml dest=/usr/lib/firewalld/services/tomcat.xml owner=root group=root
+
+- name: Restart firewalld
+  service: name=firewalld state=restarted enabled=yes
+
+- name: Expose tomcat
+  shell: firewall-cmd --add-service=tomcat --zone=public --permanent
+
+- name: Wait for tomcat started
+  wait_for: port={{http_port}}
+

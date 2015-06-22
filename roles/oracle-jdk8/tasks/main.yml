@@ -1,0 +1,31 @@
+---
+
+- name: Install wget
+  yum: name=wget state=present
+
+- name: Download oracle-jdk8
+  shell: 'wget --no-check-certificate --no-cookies - --header "Cookie: oraclelicense=accept-securebackup-cookie" \
+          {{jdk_download_url}} -O /tmp/{{jdk_archive_file}}'
+  args:
+    creates: /tmp/{{jdk_archive_file}}
+
+- name: Extract oracle-jdk8 archive
+  command: tar xzf {{jdk_archive_file}} -C /opt/ creates=/opt/{{jdk_extract_dir}} chdir=/tmp
+
+- name: alternatives --install
+  shell: alternatives --install /usr/bin/{{item}} {{item}} /opt/{{jdk_extract_dir}}/bin/{{item}} 2
+  with_items:
+    - java
+    - jar
+    - javac
+
+- name: alternatives --set
+  shell: alternatives --set {{item}} /opt/{{jdk_extract_dir}}/bin/{{item}}
+  with_items:
+    - java
+    - jar
+    - javac
+
+- name: Register /etc/profile
+  template: src=profile.d/java.sh dest=/etc/profile.d/java.sh owner=root group=root mode=0744
+
